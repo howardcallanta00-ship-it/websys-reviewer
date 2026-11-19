@@ -1,0 +1,14 @@
+{
+  "name": "websys-reviewer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "IT0049 Web System Technologies reviewer: CodeIgniter 4 and Laravel, modules 1 to 8.",
+  "type": "module",
+  "scripts": {
+    "check": "node scripts/check.mjs",
+    "dev": "node scripts/dev-server.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
