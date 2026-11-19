@@ -22,9 +22,11 @@ services:
       - path: /index.html
         name: Cache-Control
         value: no-cache
+      # Revalidate on every load (cheap 304s) so a deploy shows up immediately and
+      # browsers never mix old and new ES modules.
       - path: /assets/*
         name: Cache-Control
-        value: public, max-age=3600
+        value: no-cache
     routes:
       # The app uses hash routes (#/learn/m1), so every real path serves index.html.
       - type: rewrite
