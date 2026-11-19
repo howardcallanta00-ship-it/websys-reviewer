@@ -2,7 +2,7 @@
 import { MODULES, MODULE_BY_ID, QUESTION_BY_ID, questionsOf } from '../content/index.js';
 import { esc, fmt, shuffle, ICON, pct } from '../util.js';
 import { store } from '../store.js';
-import { isRight, KIND, optionButtons, feedbackBox, answerText, correctText, missedIds, chip, overall, moduleProgress } from './shared.js';
+import { isRight, KIND, optionButtons, feedbackBox, answerText, correctText, missedIds, chip, overall, moduleProgress, bar, ring } from './shared.js';
 
 const SECONDS_PER_Q = 75;
 const PRESETS = { midterm: ['m1', 'm2', 'm3', 'm4'], finals: ['m5', 'm6', 'm7', 'm8'], all: MODULES.map((m) => m.id) };
@@ -36,8 +36,14 @@ export function startSession({ mods, ids, length = 20, timed = false, feedback =
   session = {
     ids: picked.map((q) => q.id), idx: 0, st, mode: feedback, timed,
     endsAt: timed ? Date.now() + picked.length * SECONDS_PER_Q * 1000 : null,
-    finished: false, label: ids ? 'Retry' : (mods.length === 1 ? MODULE_BY_ID[mods[0]].code : mods.map((m) => MODULE_BY_ID[m].code).join(', '))
+    finished: false, combo: 0, bestCombo: 0, outcome: null,
+    label: ids ? 'Retry' : (mods.length === 1 ? MODULE_BY_ID[mods[0]].code : mods.map((m) => MODULE_BY_ID[m].code).join(', '))
   };
+}
+
+function bumpCombo(ok) {
+  session.combo = ok ? session.combo + 1 : 0;
+  session.bestCombo = Math.max(session.bestCombo, session.combo);
 }
 
 function record(id) {
@@ -51,6 +57,17 @@ function finish() {
   for (const id of session.ids) { session.st[id].checked = true; record(id); }
   session.finished = true;
   stopTimer();
+  const score = session.ids.filter((id) => isRight(QUESTION_BY_ID[id], session.st[id])).length;
+  const p = pct(score, session.ids.length);
+  // Personal bests only count for full exams of 10+ questions, not retries.
+  session.outcome = session.label !== 'Retry' && session.ids.length >= 10 ? { prev: store.best(session.label), change: store.setBest(session.label, p) } : null;
+}
+
+function band(p) {
+  if (p >= 90) return ['Exam-ready on this set.', 'Keep it warm with a short drill every day or two.'];
+  if (p >= 75) return ['Strong result.', 'Review the few you missed and you are close to exam-ready.'];
+  if (p >= 50) return ['Getting there.', 'Each miss below links to its lesson. Reread those, then retry just the misses.'];
+  return ['A useful starting point.', 'Now you know exactly what to study. Open the lessons linked below, then retry the misses.'];
 }
 
 function stopTimer() { if (timer) { clearInterval(timer); timer = null; } }
@@ -155,9 +172,12 @@ function questionView() {
   }
   const canAnswer = q.t === 'order' || (q.t === 'id' || q.t === 'fill' ? true : s.ans !== null);
   let primary = '';
-  if (instant && !s.checked) primary = `<button class="btn primary" data-act="pr-check" data-k="check"${canAnswer ? '' : ' disabled'}>Check answer</button>`;
-  else if (instant) primary = `<button class="btn primary" data-act="pr-next" data-k="next">${last ? 'See results' : 'Next question'}</button>`;
-  else primary = `<button class="btn primary" data-act="pr-next" data-k="next">${last ? 'Finish exam' : 'Next question'}</button>`;
+  if (instant && !s.checked) primary = `<button class="btn primary" data-act="pr-check" data-k="check" data-hotkey="enter"${canAnswer ? '' : ' disabled'}>Check answer</button>`;
+  else if (instant) primary = `<button class="btn primary" data-act="pr-next" data-k="next" data-hotkey="enter">${last ? 'See results' : 'Next question'} ${ICON.arrow}</button>`;
+  else primary = `<button class="btn primary" data-act="pr-next" data-k="next" data-hotkey="enter">${last ? 'Finish exam' : 'Next question'}</button>`;
+  const done = session.ids.filter((qid) => session.st[qid].checked || session.st[qid].ans !== null || (session.st[qid].text && session.st[qid].text.trim())).length;
+  const comboChip = instant && s.checked && right && session.combo >= 3 ? `<span class="combo">${ICON.flame} ${session.combo} in a row</span>` : '';
+  const keys = q.t === 'mcq' || q.t === 'tf' ? 'Keys: 1–' + (q.t === 'tf' ? 2 : q.o.length) + ' to choose, Enter to ' + (instant ? 'check and continue' : 'continue') : 'Enter to ' + (instant ? 'check and continue' : 'continue');
   const nav = session.ids.map((qid, i) => {
     const x = session.st[qid];
     let cls = 'qn';
@@ -175,11 +195,13 @@ function questionView() {
           <div class="row"><span class="mono muted" style="font-size:.85rem">Question ${pos + 1} of ${session.ids.length}</span>${chip(q.module)}<span class="label">${KIND[q.t]}</span></div>
           ${t ? `<span id="timer" class="timer${t.left <= 60 ? ' low' : ''}" role="timer" aria-label="Time left">${t.text} left</span>` : ''}
         </div>
+        <div class="exam-progress">${bar(pct(done, session.ids.length))}</div>
         <h1 class="qtext">${fmt(q.q)}</h1>
         ${q.code ? `<pre class="qcode">${esc(q.code)}</pre>` : ''}
         ${body}
-        ${showFb ? feedbackBox(q, right) : ''}
+        ${showFb ? `<div class="fb-wrap">${feedbackBox(q, right)}${comboChip}</div>` : ''}
         <div class="row">${primary}${pos > 0 ? '<button class="btn" data-act="pr-prev" data-k="prev">Previous</button>' : ''}</div>
+        <p class="keys muted">${keys}</p>
       </div>
       <aside class="side-col stack">
         <section class="stack-sm"><h2 class="label">Questions · ${esc(session.label)}</h2><div class="qnav">${nav}</div>
@@ -213,13 +235,28 @@ function resultsView() {
       <span class="muted" style="font-size:.9rem">${fmt(q.why)}</span>
       ${lesson ? `<a style="font-size:.88rem" href="#/learn/${lesson.module.id}/${lesson.id}">${esc(q.module.code)} · ${esc(lesson.title)}</a>` : ''}</div></li>`;
   }).join('');
+  const p = pct(score, ids.length);
+  const [headline, advice] = band(p);
+  const out = session.outcome;
+  let bestLine = '';
+  if (out && out.change === 'better') bestLine = `<span class="best">${ICON.spark} New personal best for ${esc(session.label)}, up from ${out.prev}%</span>`;
+  else if (out && out.change === 'first') bestLine = `<span class="best">${ICON.spark} First score on record for ${esc(session.label)}. Beat it next time.</span>`;
+  else if (out && out.prev != null) bestLine = `<span class="muted" style="font-size:.9rem">Your best for ${esc(session.label)}: ${out.prev}%</span>`;
   return {
     title: 'Results · Practice', nav: 'practice',
     html: `<div class="page"><div class="split">
       <div class="main-col stack">
-        <span class="eyebrow">Results · ${esc(session.label)}</span>
-        <h1 class="h1">${score} of ${ids.length} correct <span class="muted" style="font-size:.6em">(${pct(score, ids.length)}%)</span></h1>
-        <div class="row">${missed.length ? `<button class="btn primary" data-act="pr-retry-these" data-k="rt">Retry the ${missed.length} I missed</button>` : ''}<button class="btn" data-act="pr-new" data-k="new">New exam</button></div>
+        <section class="result-hero">
+          ${ring(score, ids.length, { size: 140, stroke: 12, label: `${p}%`, sub: `${score} of ${ids.length}` })}
+          <div class="stack-sm">
+            <span class="eyebrow">Results · ${esc(session.label)}</span>
+            <h1 class="h1">${headline}</h1>
+            <p class="lead" style="font-size:1.05rem">${advice}</p>
+            ${bestLine}
+            ${session.bestCombo >= 3 ? `<span class="muted" style="font-size:.9rem">Longest run: ${session.bestCombo} correct in a row</span>` : ''}
+          </div>
+        </section>
+        <div class="row">${missed.length ? `<button class="btn primary" data-act="pr-retry-these" data-k="rt" data-hotkey="enter">Retry the ${missed.length} I missed</button>` : ''}<button class="btn" data-act="pr-new" data-k="new">New exam</button></div>
         <ol class="list-plain divided">${rows}</ol>
       </div>
       <aside class="side-col stack"><section class="panel stack-sm"><h2 class="label">By module</h2>
@@ -250,15 +287,30 @@ export const actions = {
     if (session.mode === 'instant') {
       const s = session.st[id];
       const q = QUESTION_BY_ID[id];
+      if (s.checked) { actions['pr-next'](); return; } // Enter again moves on
       if ((q.t === 'mcq' || q.t === 'tf') && s.ans === null) return;
       s.checked = true; record(id);
+      bumpCombo(isRight(q, s));
     } else actions['pr-next']();
   },
-  'pr-next': () => { if (session.idx === session.ids.length - 1) finish(); else session.idx++; window.scrollTo(0, 0); },
+  'pr-next': () => {
+    // In "at the end" mode, count combos on finish only; in instant mode they were counted on check.
+    if (session.idx === session.ids.length - 1) {
+      if (session.mode !== 'instant') for (const qid of session.ids) bumpCombo(isRight(QUESTION_BY_ID[qid], session.st[qid]));
+      finish();
+    } else session.idx++;
+    window.scrollTo(0, 0);
+  },
   'pr-prev': () => { if (session.idx > 0) session.idx--; window.scrollTo(0, 0); },
   'pr-go': (d) => { session.idx = Number(d.i); window.scrollTo(0, 0); },
-  'pr-finish': () => { finish(); window.scrollTo(0, 0); },
-  'pr-quit': () => { session = null; stopTimer(); },
+  'pr-finish': () => {
+    if (!window.confirm('Finish now? Unanswered questions count as missed.')) return false;
+    finish(); window.scrollTo(0, 0);
+  },
+  'pr-quit': () => {
+    if (!window.confirm('Quit this exam? Answers you already checked stay in your record.')) return false;
+    session = null; stopTimer();
+  },
   'pr-new': () => { session = null; },
   'pr-retry-these': () => {
     const missed = session.ids.filter((id) => !isRight(QUESTION_BY_ID[id], session.st[id]));

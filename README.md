@@ -24,7 +24,18 @@ The course builds one task manager twice, first in CodeIgniter and then in Larav
 - **CI ↔ Laravel translator**: 21 concepts side by side, with a "hide one side" self-test.
 - **Flashcards**: 150 cards built from the cheat sheets, using simple Leitner boxes.
 - **Cheat sheets and glossary**: printable, plus search across everything.
-- **Home dashboard** with a course map, weak spots, and progress per module.
+- **Home dashboard**:
+  - a daily goal measured in study points (2 per correct answer, 1 per attempt, 5 per lesson, 1 per flashcard)
+  - a streak and a 7-day activity strip
+  - the course map with a mastery level per module (Not started → Learning → Practicing → Exam-ready) and the exact targets for the next level
+  - weak spots
+- **Encouragement where it counts**:
+  - a one-click "Mark done and continue"
+  - toasts when you finish a lesson, a module or the daily goal
+  - a counter for correct answers in a row
+  - personal bests per exam scope
+  - results that tell you what to do next
+- **Keyboard shortcuts**: 1–4 to choose, Enter to check and continue; on flashcards, Space to flip and 1/2/3 to rate.
 - **Light and dark themes** and three text sizes.
 
 Progress is stored in the browser's `localStorage` only. There is no backend, no account and no tracking. Anything marked **Added for clarity** is not in the slides. These are small fills where a slide was cut off or skipped a step, such as the M8 `destroy()` method.

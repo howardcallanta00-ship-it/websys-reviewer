@@ -6,7 +6,9 @@ import * as cards from './views/cards.js';
 import * as compare from './views/compare.js';
 import * as reference from './views/reference.js';
 import * as settings from './views/settings.js';
-import { esc } from './util.js';
+import { esc, toast, ICON } from './util.js';
+import { store, dayKey } from './store.js';
+import { streak } from './views/shared.js';
 
 const ACTIONS = { ...home.actions, ...learn.actions, ...practice.actions, ...cards.actions, ...compare.actions, ...reference.actions, ...settings.actions };
 const main = document.getElementById('main');
@@ -72,9 +74,24 @@ export function render() {
     }
   }
   if (route.parts[0] === 'practice') practice.after();
+  // On narrow screens the request rail scrolls sideways; bring the highlighted stop into view.
+  const rail = main.querySelector('.rail-stops');
+  const on = rail && rail.querySelector('.stop.on, .stop[aria-pressed="true"]');
+  if (routeChanged && rail && on && rail.scrollWidth > rail.clientWidth) {
+    const item = on.parentElement;
+    rail.scrollLeft = item.offsetLeft - (rail.clientWidth - item.offsetWidth) / 2;
+  }
 }
 
 practice.bindRerender(render);
+
+// Celebrate the daily goal once per day, whichever activity crosses it.
+store.onActivity(({ before, after }) => {
+  const g = Number(store.setting('goal')) || 30;
+  if (before < g && after >= g && store.cheer(dayKey())) {
+    setTimeout(() => toast(`<b>${ICON.spark} Daily goal reached.</b> ${after} points today · ${streak().n}-day streak.`, { kind: 'big', ms: 5600 }), 450);
+  }
+});
 
 function run(name, el, ev) {
   const fn = ACTIONS[name];
@@ -105,6 +122,20 @@ document.addEventListener('keydown', (e) => {
   if (!el) return;
   e.preventDefault();
   run(el.dataset.enter, el, e);
+});
+// Keyboard shortcuts: any visible control with data-hotkey="1 a enter" responds to those keys.
+document.addEventListener('keydown', (e) => {
+  if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+  const t = e.target;
+  if (t.closest && t.closest('input, textarea, select, [contenteditable="true"]')) return;
+  const key = e.key === ' ' ? 'space' : e.key.toLowerCase();
+  // Let focused buttons and links handle Enter/Space natively, except answer options,
+  // where Enter should mean "check" rather than "pick this option again".
+  if ((key === 'enter' || key === 'space') && t.closest && t.closest('button, a') && !t.closest('button.opt')) return;
+  const el = [...main.querySelectorAll('[data-hotkey]')].find((b) => !b.disabled && b.offsetParent !== null && b.dataset.hotkey.split(' ').includes(key));
+  if (!el) return;
+  e.preventDefault();
+  el.click();
 });
 document.addEventListener('submit', (e) => {
   const form = e.target.closest('[data-submit="search"]');

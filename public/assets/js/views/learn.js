@@ -1,9 +1,9 @@
 // Lessons: track index, module overview, and the lesson workbench (rail + code + notes + quick check).
 import { MODULES, MODULE_BY_ID, LESSON_BY_KEY, CONCEPT_BY_ID, QUESTION_BY_ID, questionsOf, neighbors } from '../content/index.js';
-import { esc, fmt, plain, ICON, trackName } from '../util.js';
+import { esc, fmt, plain, ICON, trackName, toast } from '../util.js';
 import { highlightLine } from '../highlight.js';
 import { store } from '../store.js';
-import { seededPerm, optionButtons, moduleProgress, chip, bar } from './shared.js';
+import { seededPerm, optionButtons, moduleProgress, chip, bar, badge, mastery } from './shared.js';
 import { startSession } from './practice.js';
 
 let ls = null; // state of the open lesson
@@ -25,7 +25,8 @@ function modCard(m) {
   const p = moduleProgress(m);
   const pc = Math.round((p.done / p.total) * 100);
   return `<a class="modcard ${m.track}" href="#/learn/${m.id}">
-    <span class="row">${chip(m)}<span class="label">${p.total} lessons · ${questionsOf([m.id]).length} questions</span></span>
+    <span class="row" style="justify-content:space-between">${chip(m)}${badge(m)}</span>
+    <span class="label">${p.total} lessons · ${questionsOf([m.id]).length} questions</span>
     <strong class="h3">${esc(m.title)}</strong>
     <p>${esc(m.summary)}</p>
     ${bar(pc)}
@@ -73,6 +74,13 @@ function moduleView(m) {
         <section class="stack-sm"><h2 class="h2">Lessons</h2><ol class="list-plain lessonlist divided">${lessons}</ol></section>
       </div>
       <aside class="side-col stack">
+        ${(() => {
+          const x = mastery(m);
+          return `<section class="panel stack-sm mastery-panel"><div class="row" style="justify-content:space-between"><h2 class="label">Your level</h2>${badge(m)}</div>
+          ${x.level === 3 ? `<p>All three targets met for ${esc(m.code)}. A short drill now and then keeps it fresh.</p>`
+            : `<p class="muted" style="font-size:.9rem">Exam-ready means all three of these:</p>`}
+          <ul class="reqs">${x.reqs.map((r) => `<li class="${r.ok ? 'ok' : ''}">${r.ok ? ICON.check : '<span class="todo" aria-hidden="true"></span>'}<span>${esc(r.label)} <b class="mono">${esc(r.fmt)}</b></span></li>`).join('')}</ul></section>`;
+        })()}
         <section class="panel stack-sm"><h2 class="label">By the end you can</h2><ul class="prose" style="padding-left:1.1rem;margin:0">${m.objectives.map((o) => `<li>${fmt(o)}</li>`).join('')}</ul></section>
         <section class="panel stack-sm"><h2 class="label" style="color:var(--warn)">Common mistakes</h2><ul class="prose" style="padding-left:1.1rem;margin:0">${m.mistakes.map((o) => `<li>${fmt(o)}</li>`).join('')}</ul></section>
         <section class="panel stack-sm"><h2 class="label" style="color:var(--ok)">Remember</h2><ul class="prose" style="padding-left:1.1rem;margin:0">${m.takeaways.map((o) => `<li>${fmt(o)}</li>`).join('')}</ul></section>
@@ -211,9 +219,13 @@ function lessonView(m, l) {
         <p class="lead">${fmt(l.lead)}</p>
         ${l.body && l.body.length ? `<div class="prose">${l.body.map(block).join('')}</div>` : ''}
         ${codeHtml(l)}
-        <div class="row" style="padding-top:8px">
-          <button class="btn ${done ? '' : 'primary'}" data-act="lesson-done" data-k="done" aria-pressed="${done}">${done ? `${ICON.check} Done · undo` : 'Mark lesson done'}</button>
-          ${link(prev, 'prev')}${link(next, 'next')}
+        <div class="lesson-end">
+          ${done
+            ? `<p class="done-line">${ICON.check}<span>You finished this lesson.</span><button class="linkbtn" data-act="lesson-done" data-k="done">Undo</button></p>
+               <div class="row">${next ? `<a class="btn primary" href="#/learn/${next.module.id}/${next.id}" rel="next">Next: ${esc(next.title)} ${ICON.arrow}</a>` : ''}${link(prev, 'prev')}</div>`
+            : `<div class="row"><button class="btn primary" data-act="lesson-done-next" data-k="donenext">${next ? `Mark done and continue ${ICON.arrow}` : `${ICON.check} Mark done`}</button>
+               ${next ? `<button class="btn" data-act="lesson-done" data-k="done">Mark done</button>` : ''}${link(prev, 'prev')}</div>
+               ${next ? `<p class="muted" style="font-size:.86rem">Up next: ${esc(next.module.code)} · ${esc(next.title)}</p>` : ''}`}
         </div>
       </article>
       <aside class="lesson-side" aria-label="Lesson tools">
@@ -225,6 +237,16 @@ function lessonView(m, l) {
       </aside>
     </div>`
   };
+}
+
+function celebrateLesson(l) {
+  const m = l.module;
+  const p = moduleProgress(m);
+  if (p.done === p.total) {
+    toast(`<b>${ICON.spark} ${esc(m.code)} complete.</b> All ${p.total} lessons done. Practice ${esc(m.code)} to make it exam-ready.`, { kind: 'big', ms: 5200 });
+  } else {
+    toast(`<b>${ICON.check} Lesson done.</b> ${esc(m.code)} is ${p.done}/${p.total} · ${p.total - p.done} to go.`);
+  }
 }
 
 export const actions = {
@@ -248,7 +270,20 @@ export const actions = {
     }
   },
   'lesson-reveal': () => { ls.reveal = true; },
-  'lesson-done': () => { store.setDone(ls.key, !store.isDone(ls.key)); },
+  'lesson-done': () => {
+    const on = !store.isDone(ls.key);
+    store.setDone(ls.key, on);
+    if (on) celebrateLesson(LESSON_BY_KEY[ls.key]);
+  },
+  'lesson-done-next': () => {
+    const l = LESSON_BY_KEY[ls.key];
+    store.setDone(l.key, true);
+    celebrateLesson(l);
+    const { next } = neighbors(l);
+    if (!next) return;
+    location.hash = `#/learn/${next.module.id}/${next.id}`;
+    return false;
+  },
   'practice-module': (d) => {
     startSession({ mods: [d.m], length: 'all', timed: false, feedback: store.setting('feedback') });
     location.hash = '#/practice';

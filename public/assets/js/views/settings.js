@@ -21,6 +21,7 @@ export function render() {
       <div class="divided">
         <div class="setting"><div class="what"><h2 class="h3">Theme</h2><p>System follows your device’s light or dark mode.</p></div>${seg('theme', [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']])}</div>
         <div class="setting"><div class="what"><h2 class="h3">Text size</h2><p>Changes every page, code included.</p></div>${seg('size', [['s', 'Small'], ['m', 'Default'], ['l', 'Large']])}</div>
+        <div class="setting"><div class="what"><h2 class="h3">Daily goal</h2><p>Study points per day. 2 per correct answer, 1 per attempt, 5 per lesson finished, 1 per flashcard. About 30 is a solid 20-minute session.</p></div>${seg('goal', [['15', 'Light · 15'], ['30', 'Steady · 30'], ['60', 'Exam week · 60']])}</div>
         <div class="setting"><div class="what"><h2 class="h3">Exam feedback</h2><p>Default for new practice exams.</p></div>${seg('feedback', [['instant', 'After each question'], ['end', 'At the end']])}</div>
         <div class="setting"><div class="what"><h2 class="h3">Timed exams</h2><p>75 seconds per question.</p></div>${seg('timed', [['true', 'On'], ['false', 'Off']])}</div>
         <div class="setting"><div class="what"><h2 class="h3">Your progress</h2>

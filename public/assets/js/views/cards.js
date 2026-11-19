@@ -1,6 +1,6 @@
 // Flashcards built from the cheat sheets, with simple Leitner boxes (1 = new/hard ... 5 = known).
 import { CARDS, REFERENCE } from '../content/index.js';
-import { esc, shuffle, trackName } from '../util.js';
+import { esc, shuffle, trackName, ICON } from '../util.js';
 import { store } from '../store.js';
 
 let decks = null;   // selected deck ids
@@ -43,11 +43,13 @@ export function render() {
             ${front}
             ${flipped ? back : ''}
             <div class="row">${flipped
-              ? `<button class="btn" data-act="card-rate" data-v="again" data-k="again">Again</button><button class="btn primary" data-act="card-rate" data-v="good" data-k="good">Got it</button><button class="btn" data-act="card-rate" data-v="easy" data-k="easy">Easy</button>`
-              : `<button class="btn primary" data-act="card-flip" data-k="flip">Show answer</button>`}</div>
+              ? `<button class="btn" data-act="card-rate" data-v="again" data-k="again" data-hotkey="1">Again</button><button class="btn primary" data-act="card-rate" data-v="good" data-k="good" data-hotkey="2 enter">Got it</button><button class="btn" data-act="card-rate" data-v="easy" data-k="easy" data-hotkey="3">Easy</button>`
+              : `<button class="btn primary" data-act="card-flip" data-k="flip" data-hotkey="space enter">Show answer</button>`}</div>
+            <p class="keys muted">${flipped ? 'Keys: 1 Again · 2 or Enter Got it · 3 Easy' : 'Keys: Space or Enter to flip'}</p>
           </section>`
-          : `<section class="flash stack-sm"><p class="front">${decks.size ? `Deck finished. ${reviewed} cards reviewed.` : 'Pick at least one deck below.'}</p>${decks.size ? '<div><button class="btn primary" data-act="card-restart" data-k="restart">Go again</button></div>' : ''}</section>`}
-        <div class="boxes" aria-label="Cards per box">${counts.map((c, i) => `<span>Box ${i + 1}: ${c}</span>`).join('')}</div>
+          : `<section class="flash stack-sm"><p class="front">${decks.size ? `${ICON.spark} Deck finished. ${reviewed} card${reviewed === 1 ? '' : 's'} reviewed this round.` : 'Pick at least one deck.'}</p>${decks.size ? '<div><button class="btn primary" data-act="card-restart" data-k="restart">Go again</button></div>' : ''}</section>`}
+        <div class="row" style="justify-content:space-between"><div class="boxes" aria-label="Cards per box">${counts.map((c, i) => `<span class="box-${i + 1}">Box ${i + 1}: ${c}</span>`).join('')}</div>
+        <span class="muted" style="font-size:.86rem">${store.day().c} reviewed today</span></div>
       </div>
       <aside class="side-col stack">
         <section class="stack-sm"><div class="row" style="justify-content:space-between"><h2 class="label">Decks</h2><span class="row" style="gap:6px"><button class="btn small" data-act="card-pick" data-v="ci" data-k="pick-ci">CI</button><button class="btn small" data-act="card-pick" data-v="lv" data-k="pick-lv">Laravel</button><button class="btn small" data-act="card-pick" data-v="all" data-k="pick-all">All</button></span></div>
@@ -75,7 +77,7 @@ export const actions = {
   'card-restart': () => { build(); },
   'card-reset': () => {
     if (!window.confirm('Reset every flashcard back to box 1?')) return false;
-    for (const c of CARDS) store.setCard(c.id, 1);
+    for (const c of CARDS) store.setCard(c.id, 1, false);
     build();
   }
 };

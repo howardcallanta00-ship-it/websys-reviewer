@@ -1,7 +1,7 @@
 // Pieces several views use: question widgets, grading, stable shuffles, progress numbers.
 import { esc, fmt, KEYS, normAnswer, ICON } from '../util.js';
 import { MODULES, QUESTIONS } from '../content/index.js';
-import { store } from '../store.js';
+import { store, dayKey } from '../store.js';
 
 // Deterministic shuffle so a lesson's quick-check options stay put between renders.
 export function seededPerm(n, seedText) {
@@ -56,7 +56,7 @@ export function optionButtons(q, st, { act, show, lock, prefix }) {
       if (value === q.a) cls += ' right';
       else if (chosen) cls += ' wrong';
     }
-    return `<button class="${cls}" data-act="${act}" data-v="${esc(String(value))}" data-k="${prefix}-${pos}" aria-pressed="${chosen}"${lock ? ' disabled' : ''}><span class="key" aria-hidden="true">${KEYS[pos]}</span><span class="otext">${fmt(label)}</span></button>`;
+    return `<button class="${cls}" data-act="${act}" data-v="${esc(String(value))}" data-k="${prefix}-${pos}" data-hotkey="${pos + 1} ${KEYS[pos].toLowerCase()}" aria-keyshortcuts="${pos + 1}" aria-pressed="${chosen}"${lock ? ' disabled' : ''}><span class="key" aria-hidden="true">${KEYS[pos]}</span><span class="otext">${fmt(label)}</span></button>`;
   }).join('');
 }
 
@@ -95,6 +95,72 @@ export function weakSpots(limit = 5) {
 }
 
 export const missedIds = () => QUESTIONS.filter((q) => { const s = store.stat(q.id); return s && s.last === 0; }).map((q) => q.id);
+
+/* ---------- Motivation: daily goal, streak, week, mastery ---------- */
+const DAY_MS = 86400000;
+export const goal = () => Number(store.setting('goal')) || 30;
+
+export function streak() {
+  let n = 0;
+  const today = new Date();
+  // A streak stays alive until the end of today even if today has no activity yet.
+  let start = store.day(dayKey(today)).p > 0 ? 0 : 1;
+  for (let i = start; i < 400; i++) {
+    const d = new Date(today.getTime() - i * DAY_MS);
+    if (store.day(dayKey(d)).p > 0) n++; else break;
+  }
+  return { n, today: store.day(dayKey(today)).p > 0 };
+}
+
+export function week() {
+  const today = new Date();
+  return [...Array(7).keys()].reverse().map((i) => {
+    const d = new Date(today.getTime() - i * DAY_MS);
+    const p = store.day(dayKey(d)).p;
+    return { label: d.toLocaleDateString('en', { weekday: 'narrow' }), full: d.toLocaleDateString('en', { weekday: 'long' }), p, hit: p >= goal(), today: i === 0 };
+  });
+}
+
+// Mastery uses each question's most recent answer, so it reflects what you know now.
+export function mastery(m) {
+  const qs = QUESTIONS.filter((q) => q.module === m);
+  const seen = qs.filter((q) => store.stat(q.id));
+  const lastRight = seen.filter((q) => store.stat(q.id).last === 1).length;
+  const acc = seen.length ? Math.round((lastRight / seen.length) * 100) : 0;
+  const done = m.lessons.filter((l) => store.isDone(l.key)).length;
+  const needSeen = Math.ceil(qs.length * 0.6);
+  const reqs = [
+    { label: 'Lessons done', have: done, need: m.lessons.length, ok: done === m.lessons.length, fmt: `${done}/${m.lessons.length}` },
+    { label: 'Questions tried', have: seen.length, need: needSeen, ok: seen.length >= needSeen, fmt: `${seen.length}/${needSeen}` },
+    { label: 'Correct (latest tries)', have: acc, need: 80, ok: seen.length >= needSeen && acc >= 80, fmt: seen.length ? `${acc}% (need 80%)` : 'need 80%' }
+  ];
+  let level = 0;
+  if (done > 0 || seen.length > 0) level = 1;
+  if (done === m.lessons.length || seen.length >= Math.ceil(qs.length * 0.3)) level = 2;
+  if (reqs.every((r) => r.ok)) level = 3;
+  return { level, label: ['Not started', 'Learning', 'Practicing', 'Exam-ready'][level], reqs, acc, seen: seen.length, total: qs.length };
+}
+
+export const badge = (m) => { const x = mastery(m); return `<span class="badge lvl-${x.level}">${x.label}</span>`; };
+
+export function ring(value, max, { size = 112, stroke = 10, label = '', sub = '' } = {}) {
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const frac = max ? Math.min(1, value / max) : 0;
+  return `<div class="ring${frac >= 1 ? ' full' : ''}" style="width:${size}px;height:${size}px" role="img" aria-label="${esc(`${label} ${sub}`.trim())}">
+    <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true">
+      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--line)" stroke-width="${stroke}"></circle>
+      <circle class="ring-arc" cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--ring)" stroke-width="${stroke}" stroke-linecap="round"
+        stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${(c * (1 - frac)).toFixed(2)}" transform="rotate(-90 ${size / 2} ${size / 2})"></circle>
+    </svg>
+    <span class="ring-text"><b>${esc(label)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span>
+  </div>`;
+}
+
+export function greeting() {
+  const h = new Date().getHours();
+  return h < 5 ? 'Up late' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+}
 
 export const chip = (m) => `<span class="chip${m.track === 'lv' ? ' lv' : ''}">${esc(m.code)}</span>`;
 export const bar = (p) => `<div class="progress" role="img" aria-label="${p}% complete"><span style="width:${Math.max(0, Math.min(100, p))}%"></span></div>`;
